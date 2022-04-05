@@ -165,7 +165,7 @@ def load_txt(point_path: Path, with_label: bool = True):
 
 def visualize_xyz_rgb(xyz: np.ndarray, rgb: np.ndarray = None):
     """
-    visualize the point cloud with either
+    visualize the point cloud witt/without rgb color
     Args:
         xyz: point cloud with N point, represented by a N*3 np.ndarray.
              xyz[i, :] is the coordinate ([xi, yi, zi]) of the point pi.
@@ -174,7 +174,7 @@ def visualize_xyz_rgb(xyz: np.ndarray, rgb: np.ndarray = None):
     Returns:
         None
     Examples:
-        >>> pc: np.ndarray = np.loadtxt(s3dis_area1_room1, dtype=np.float64).reshape(-1, 6)
+        >>> pc: np.ndarray = load_txt(s3dis_area1_room1, with_label=False)
         >>> xyz, rgb = np.hsplit(pc, indices_or_sections=2)
         >>> visualize_xyz_rgb(xyz) # visualize pure point cloud with automatically color.
         >>> visualize_xyz_rgb(xyz, rgb) # visualize point cloud with given color.
@@ -190,6 +190,21 @@ def visualize_xyz_rgb(xyz: np.ndarray, rgb: np.ndarray = None):
 
 
 def visualize_xyz_label(xyz: np.ndarray, label: np.ndarray = None, lookup_table: np.ndarray = num2label):
+    """
+    visualize the point cloud witt/without label color
+    Args:
+        xyz: point cloud with N point, represented by a N*3 np.ndarray.
+             xyz[i, :] is the coordinate ([xi, yi, zi]) of the point pi.
+        label: corresponding label of the given point cloud, represented by a N*1 np.ndarray.
+             rgb[i, 0] is the label (li) of the point pi.
+    Returns:
+        None
+    Examples:
+        >>> pc: np.ndarray = load_txt(s3dis_area1_room1, with_label=True)
+        >>> xyz, rgb = np.hsplit(pc, indices_or_sections=[3, 6])
+        >>> visualize_xyz_label(xyz) # visualize pure point cloud with automatically color.
+        >>> visualize_xyz_label(xyz, rgb) # visualize point cloud with given label color.
+    """
     assert xyz.shape[1] == 3 and xyz.shape[0] == label.shape[0]
     pointcloud = o3d.geometry.PointCloud()
     pointcloud.points = o3d.utility.Vector3dVector(xyz.astype(np.float64))
