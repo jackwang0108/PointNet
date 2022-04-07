@@ -4,6 +4,7 @@ from pathlib import Path
 from numbers import Number
 
 # Third Party Library
+import h5py
 import numpy as np
 import open3d as o3d
 
@@ -32,20 +33,32 @@ class DatasetPaths(object):
         """
         Paths of S3DIS dataset
         Attributes:
-            s3dis_original_xyzrgb_data:
-            s3dis_processed_h5_data
+            s3dis_original_xyzrgb_data: Dict[str, Dict[str, Dict[str, Union[Path, List[Path]]]]], dictionary of original
+                data. For example, s3dis_original_xyzrgb_data["Area_1"]["office_1"]["data"] is a pathlib.Path object,
+                which points to S3DIS/original/Area_1/office_1/office_1.txt and s3dis_original_xyzrgb_data["Area_2"]["
+                hallway_1" ][" annotations"] is a list of pathlib.Path. s3dis_original_xyzrgb_data["Area_2"]["hallway_1"
+                ][" annotations"][0] points to S3DIS/original/Area_2/hallway_1/Annotations/bookcase_1.txt
+            s3dis_processed_h5_data: Dict[str, Path], s3dis_processed_h5_data["ply_data_all_0"] points to S3DIS/preporce
+                ssed/ply_data_all_0.
+            s3dis_processed_npy_data: Dict[str, Path], s3dis_processed_npy_data["Area_1_all"] points to S3DIS/my_preproc
+                essed/Area_1_all.npy
         """
         _base: Path = Path(__file__).resolve().parent.joinpath("datasets")
         # s3dis paths
         s3dis_base: Path = _base.joinpath("s3dis")
-        # s3dis original path
-        _s3dis_original: Path = s3dis_base.joinpath("original").resolve()
+
+        # s3dis my processed path
+        _s3dis_my_processed: Path = s3dis_base.joinpath("my_processed").resolve()
+        s3dis_processed_npy_data: Dict[str, Path] = {
+            _p.stem: _p for _p in _s3dis_my_processed.glob("*.npy")
+        }
+
 
         # s3dis preprocessed path
         _s3dis_processed: Path = s3dis_base.joinpath("processed").resolve()
         # data: {file_name: file_path}
         s3dis_processed_h5_data: Dict[str, Path] = {
-            _p.stem: _p for _p in _s3dis_processed.iterdir() if _p.suffix == ".h5"
+            _p.stem: _p for _p in _s3dis_processed.glob("*.h5")
         }
 
         # s3dis original path
@@ -101,7 +114,7 @@ def voxelize(xyz: np.ndarray, voxel_grid_size: Number = 0.2) -> np.ndarray:
     return per_point_indices
 
 
-def load_txt(point_path: Path, with_label: bool = True):
+def load_txt(point_path: Path, with_label: bool = True) -> np.ndarray:
     """
     load_txt is used to load point cloud from .txt file (i.e., original s3dis data format)
     Args:
@@ -130,6 +143,8 @@ def load_txt(point_path: Path, with_label: bool = True):
     # load from each file
     for instance_file in instance_folder.glob("*.txt"):
         name = instance_file.stem.split("_")[0]
+        # Some files are actually cannot be loaded due to error columes
+        # for example, Area_5/hallway_6/Annotations/ceiling_1, row 180390.
         data = np.loadtxt(instance_file, dtype=str)
 
         # detect corrupted data
@@ -162,8 +177,13 @@ def load_txt(point_path: Path, with_label: bool = True):
     np.random.shuffle(room_points)
     return room_points
 
+def load_hdf5(hdf5_path: Path):
+    assert hdf5_path.exists() and hdf5_path.suffix == ".hdf5"
+    return h5py.File(hdf5_path, mode="r")
 
-def visualize_xyz_rgb(xyz: np.ndarray, rgb: np.ndarray = None):
+
+
+def visualize_xyz_rgb(xyz: np.ndarray, rgb: np.ndarray = None) -> None:
     """
     visualize the point cloud witt/without rgb color
     Args:
@@ -243,15 +263,23 @@ if __name__ == "__main__":
     # # visualize_xyz_rgb(xyz, rgb)
     # visualize_xyz_label(xyz, label)
 
-    all_class = {}
-    a = DatasetPaths.S3DIS.s3dis_original_xyzrgb_data
-    for area in a.keys():
-        for room in a[area].keys():
-            p: Path = a[area][room]
-            for i in p["annotations"]:
-                name = i.stem.split("_")[0]
-                if all_class.get(name, None) is not None:
-                    all_class[name] += 1
-                else:
-                    all_class[name] = 1
-    print(all_class)
+    # all_class = {}
+    # a = DatasetPaths.S3DIS.s3dis_original_xyzrgb_data
+    # for area in a.keys():
+    #     for room in a[area].keys():
+    #         p: Path = a[area][room]
+    #         for i in p["annotations"]:
+    #             name = i.stem.split("_")[0]
+    #             if all_class.get(name, None) is not None:
+    #                 all_class[name] += 1
+    #             else:
+    #                 all_class[name] = 1
+    # print(all_class)
+
+    # my_process = DatasetPaths.S3DIS.s3dis_processed_npy_data
+    # import pprint
+    # pprint.pprint(my_process)
+    # pprint.pprint(DatasetPaths.S3DIS.s3dis_processed_h5_data)
+
+    with load_hdf5(DatasetPaths.S3DIS.s3dis_processed_npy_data["Area_1_all"].parent.joinpath("Area_3.hdf5")) as f:
+        print("Done")
