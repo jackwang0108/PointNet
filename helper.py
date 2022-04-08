@@ -1,4 +1,5 @@
 # Standary Library
+import time
 from typing import *
 from pathlib import Path
 from numbers import Number
@@ -40,8 +41,8 @@ class DatasetPaths(object):
                 ][" annotations"][0] points to S3DIS/original/Area_2/hallway_1/Annotations/bookcase_1.txt
             s3dis_processed_h5_data: Dict[str, Path], s3dis_processed_h5_data["ply_data_all_0"] points to S3DIS/preporce
                 ssed/ply_data_all_0.
-            s3dis_processed_npy_data: Dict[str, Path], s3dis_processed_npy_data["Area_1_all"] points to S3DIS/my_preproc
-                essed/Area_1_all.npy
+            s3dis_my_processed_h5_data: Dict[str, Path], s3dis_my_processed_h5_data["Area_1"] points to S3DIS/my_preproc
+                essed/Area_1.hdf5
         """
         _base: Path = Path(__file__).resolve().parent.joinpath("datasets")
         # s3dis paths
@@ -49,14 +50,14 @@ class DatasetPaths(object):
 
         # s3dis my processed path
         _s3dis_my_processed: Path = s3dis_base.joinpath("my_processed").resolve()
-        s3dis_processed_npy_data: Dict[str, Path] = {
-            _p.stem: _p for _p in _s3dis_my_processed.glob("*.npy")
+        # s3dis_my_processed_h5_data: {file_name: Path}
+        s3dis_my_processed_h5_data: Dict[str, Path] = {
+            _p.stem: _p for _p in _s3dis_my_processed.glob("*.hdf5")
         }
-
 
         # s3dis preprocessed path
         _s3dis_processed: Path = s3dis_base.joinpath("processed").resolve()
-        # data: {file_name: file_path}
+        # s3dis_processed_h5_data: {file_name: file_path}
         s3dis_processed_h5_data: Dict[str, Path] = {
             _p.stem: _p for _p in _s3dis_processed.glob("*.h5")
         }
@@ -135,6 +136,14 @@ def load_txt(point_path: Path, with_label: bool = True) -> np.ndarray:
     Notes:
         label name to label number is show in helper.label2num
     """
+    import time
+    assert not time.localtime((DatasetPaths.S3DIS.s3dis_original_xyzrgb_data["Area_5"]["hallway_6"][
+                                   "data"].parent / "Annotations/ceiling_1.txt").\
+                              stat().st_mtime).tm_year == 2016, \
+        f"Area_3/hallway_2/hallway_2.txt, row 5303 has a control symbol which cannot be convert to float, " \
+        f"please modify it first using vim and other editors."
+    #
+    #
     global label2num
     # load instances
     instance_folder = point_path.parent.joinpath("Annotations") if point_path.is_file() else point_path.joinpath(
@@ -177,10 +186,20 @@ def load_txt(point_path: Path, with_label: bool = True) -> np.ndarray:
     np.random.shuffle(room_points)
     return room_points
 
+
 def load_hdf5(hdf5_path: Path):
-    assert hdf5_path.exists() and hdf5_path.suffix == ".hdf5"
+    assert hdf5_path.exists() and hdf5_path.suffix in [".hdf5", ".h5"]
     return h5py.File(hdf5_path, mode="r")
 
+
+def convert_leagal_path(p: str) -> str:
+    import platform
+    if platform.uname().system == "Linux":
+        return p
+    illeagal = ["<", ">", "/", "\\", ":", "|", "*", "?"]
+    for i in illeagal:
+        p = p.replace(i, "_")
+    return p
 
 
 def visualize_xyz_rgb(xyz: np.ndarray, rgb: np.ndarray = None) -> None:
@@ -199,7 +218,7 @@ def visualize_xyz_rgb(xyz: np.ndarray, rgb: np.ndarray = None) -> None:
         >>> visualize_xyz_rgb(xyz) # visualize pure point cloud with automatically color.
         >>> visualize_xyz_rgb(xyz, rgb) # visualize point cloud with given color.
     """
-    assert xyz.shape[1] == 3 or rgb.shape[1] == 3
+    assert xyz.shape[-1] == 3 or rgb.shape[-1] == 3
     pointcloud = o3d.geometry.PointCloud()
     pointcloud.points = o3d.utility.Vector3dVector(xyz.astype(np.float64))
     if rgb is not None:
@@ -221,11 +240,12 @@ def visualize_xyz_label(xyz: np.ndarray, label: np.ndarray = None, lookup_table:
         None
     Examples:
         >>> pc: np.ndarray = load_txt(s3dis_area1_room1, with_label=True)
-        >>> xyz, rgb = np.hsplit(pc, indices_or_sections=[3, 6])
+        >>> xyz, rgb, label = np.hsplit(pc, indices_or_sections=[3, 6])
         >>> visualize_xyz_label(xyz) # visualize pure point cloud with automatically color.
-        >>> visualize_xyz_label(xyz, rgb) # visualize point cloud with given label color.
+        >>> visualize_xyz_label(xyz, label) # visualize point cloud with given label color.
     """
-    assert xyz.shape[1] == 3 and xyz.shape[0] == label.shape[0]
+    label = label[:, np.newaxis] if label.ndim == 1 else label
+    assert xyz.shape[-1] == 3 and xyz.shape[0] == label.shape[0]
     pointcloud = o3d.geometry.PointCloud()
     pointcloud.points = o3d.utility.Vector3dVector(xyz.astype(np.float64))
     if label is not None:
@@ -281,5 +301,6 @@ if __name__ == "__main__":
     # pprint.pprint(my_process)
     # pprint.pprint(DatasetPaths.S3DIS.s3dis_processed_h5_data)
 
-    with load_hdf5(DatasetPaths.S3DIS.s3dis_processed_npy_data["Area_1_all"].parent.joinpath("Area_3.hdf5")) as f:
-        print("Done")
+    # with load_hdf5(DatasetPaths.S3DIS.s3dis_processed_npy_data["Area_1_all"].parent.joinpath("Area_3.hdf5")) as f:
+    #     print("Done")
+    pass
