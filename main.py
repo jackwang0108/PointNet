@@ -18,7 +18,7 @@ from colorama import Fore, Style
 
 # my library
 from dataset import S3DISDataset
-from networks import PointNetSegmentation1D
+from network1D import PointNetSegmentation1D
 from helper import load_hdf5, visualize_xyz_label, visualize_xyz_rgb, num2label, convert_leagal_path
 
 
