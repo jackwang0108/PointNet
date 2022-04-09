@@ -82,6 +82,13 @@ class DatasetPaths(object):
                     pass
             s3dis_original_xyzrgb_data[_area_name] = _room_data
 
+class PathConfig:
+    base: Path = Path(__file__).resolve().parent
+    log: Path = base / "log"
+    runs: Path = base / "runs"
+    dataset: Path = base / "datastes"
+    checkpoints: Path = base / "checkpoints"
+
 
 def voxelize(xyz: np.ndarray, voxel_grid_size: Number = 0.2) -> np.ndarray:
     """

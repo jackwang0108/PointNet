@@ -19,7 +19,7 @@ from colorama import Fore, Style
 # my library
 from dataset import S3DISDataset
 from network1D import PointNetSegmentation1D
-from helper import load_hdf5, visualize_xyz_label, visualize_xyz_rgb, num2label, convert_leagal_path
+from helper import load_hdf5, visualize_xyz_label, visualize_xyz_rgb, num2label, convert_leagal_path, PathConfig
 
 
 class NetworkTrainer(object):
@@ -27,9 +27,9 @@ class NetworkTrainer(object):
 
     def __init__(self, network: nn.Module):
         super(NetworkTrainer, self).__init__()
-        self.train_ds = S3DISDataset(split="train")
-        self.val_ds = S3DISDataset(split="val")
-        self.test_ds = S3DISDataset(split="test")
+        # self.train_ds = S3DISDataset(split="train")
+        # self.val_ds = S3DISDataset(split="val")
+        # self.test_ds = S3DISDataset(split="test")
 
         self.net = network
         self.loss_func = nn.CrossEntropyLoss()
@@ -38,7 +38,7 @@ class NetworkTrainer(object):
         self.dtype = self.net.dtype
 
         self.start_time = convert_leagal_path(str(datetime.datetime.now()))
-        self.writer = SummaryWriter()
+        # self.writer = SummaryWriter()
 
     def train(self,n_epoch: int = 1000, early_stop: int = 200):
         train_loader = data.DataLoader(self.train_ds, batch_size=64, shuffle=True, num_workers=2)
@@ -87,4 +87,4 @@ if __name__ == "__main__":
     # todo: 训练代码中规范化输出格式
     # todo: 有时间的话改改preprocess, 修改的内容就是z不限制, x, y限制, 最后得到一样的数据, 还有降采样问题
     # todo: 写完 network2d
-    pass
+    trainer = NetworkTrainer(PointNetSegmentation1D(in_features=3, predicted_cls=14))
