@@ -7,7 +7,7 @@ from numbers import Number
 # Third Party Library
 import h5py
 import numpy as np
-# import open3d as o3d
+import open3d as o3d
 
 labels = ["ceiling", "floor", "wall", "beam", "column", "window", "door", "table", "chair", "sofa", "bookcase", "board",
           "clutter", "stairs"]
@@ -53,38 +53,42 @@ class DatasetPaths(object):
         # s3dis my processed path
         _s3dis_my_processed: Path = s3dis_base.joinpath(
             "my_processed").resolve()
-        # s3dis_my_processed_h5_data: {file_name: Path}
-        s3dis_my_processed_h5_data: Dict[str, Path] = {
-            _p.stem: _p for _p in _s3dis_my_processed.glob("*.hdf5")
-        }
+        if _s3dis_my_processed.exists():
+            # s3dis_my_processed_h5_data: {file_name: Path}
+            s3dis_my_processed_h5_data: Dict[str, Path] = {
+                _p.stem: _p for _p in _s3dis_my_processed.glob("*.hdf5")
+            }
 
         # s3dis preprocessed path
         _s3dis_processed: Path = s3dis_base.joinpath("processed").resolve()
         # s3dis_processed_h5_data: {file_name: file_path}
-        s3dis_processed_h5_data: Dict[str, Path] = {
-            _p.stem: _p for _p in _s3dis_processed.glob("*.h5")
-        }
+        if _s3dis_processed.exists():
+            s3dis_processed_h5_data: Dict[str, Path] = {
+                _p.stem: _p for _p in _s3dis_processed.glob("*.h5")
+            }
 
         # s3dis original path
         _s3dis_original: Path = s3dis_base.joinpath("original").resolve()
-        _s3dis_original_areas: Dict[str, Path] = {
-            _p.stem: _p for _p in _s3dis_original.iterdir() if _p.is_dir()
-        }
+        if _s3dis_original.exists():
+            _s3dis_original_areas: Dict[str, Path] = {
+                _p.stem: _p for _p in _s3dis_original.iterdir() if _p.is_dir()
+            }
 
-        # s3dis_original_xyzrgb_data["Area_1"]["office_1"]["data"]
-        s3dis_original_xyzrgb_data: Dict[str, Dict[str,
-                                                   Dict[str, Union[Path, List[Path]]]]] = {}
-        for _area_name, _area_path in _s3dis_original_areas.items():
-            _room_data = {}
-            for _room_path in _area_path.iterdir():
-                try:
-                    _room_data[_room_path.name] = {
-                        "data": next(_room_path.glob("*.txt")),
-                        "annotations": list(_room_path.joinpath("Annotations").glob("*.txt"))
-                    }
-                except StopIteration:
-                    pass
-            s3dis_original_xyzrgb_data[_area_name] = _room_data
+            # s3dis_original_xyzrgb_data["Area_1"]["office_1"]["data"]
+            s3dis_original_xyzrgb_data: Dict[str, Dict[str,
+                                                    Dict[str, Union[Path, List[Path]]]]] = {}
+            for _area_name, _area_path in _s3dis_original_areas.items():
+                _room_data = {}
+                for _room_path in _area_path.iterdir():
+                    try:
+                        _room_data[_room_path.name] = {
+                            "data": next(_room_path.glob("*.txt")),
+                            "annotations": list(_room_path.joinpath("Annotations").glob("*.txt"))
+                        }
+                    except StopIteration:
+                        pass
+                s3dis_original_xyzrgb_data[_area_name] = _room_data
+
 
 
 class PathConfig:
@@ -96,7 +100,23 @@ class PathConfig:
 
 
 class Evaluator:
-    pass
+    @staticmethod
+    def fast_hist(preds, labels, num_classes):
+        """Compute the confusion matrix for every batch.
+        Args:
+            preds (np.ndarray):  Prediction labels of points with shape of
+            (num_points, ).
+            labels (np.ndarray): Ground truth labels of points with shape of
+            (num_points, ).
+            num_classes (int): number of classes
+        Returns:
+            np.ndarray: Calculated confusion matrix.
+        """
+        k = (labels >= 0) & (labels < num_classes)
+        bin_count = np.bincount(
+            num_classes * labels[k].astype(int) + preds[k],
+            minlength=num_classes**2)
+        return bin_count[:num_classes**2].reshape(num_classes, num_classes)
 
 
 def voxelize(xyz: np.ndarray, voxel_grid_size: Number = 0.2) -> np.ndarray:
@@ -152,7 +172,6 @@ def load_txt(point_path: Path, with_label: bool = True) -> np.ndarray:
     Notes:
         label name to label number is show in helper.label2num
     """
-    import time
     assert not time.localtime((DatasetPaths.S3DIS.s3dis_original_xyzrgb_data["Area_5"]["hallway_6"][
         "data"].parent / "Annotations/ceiling_1.txt").
         stat().st_mtime).tm_year == 2016, \
@@ -216,7 +235,7 @@ def load_hdf5(hdf5_path: Path):
     return h5py.File(hdf5_path, mode="r")
 
 
-def convert_leagal_path(p: str) -> str:
+def convert_legal_path(p: str) -> str:
     """
     convert_leagal_path is used to generate leagal path in different os
     Args:
@@ -228,7 +247,7 @@ def convert_leagal_path(p: str) -> str:
         >>> current_time = str(datetime.datetime.now())
         >>> print(current_time)
         2022-04-09 04:55:32.297116
-        >>> print(convert_leagal_path(current_time))
+        >>> print(convert_legal_path(current_time))
         2022-04-09 04_55_32.297116
     """
     import platform
@@ -342,4 +361,7 @@ if __name__ == "__main__":
 
     # with load_hdf5(DatasetPaths.S3DIS.s3dis_processed_npy_data["Area_1_all"].parent.joinpath("Area_3.hdf5")) as f:
     #     print("Done")
-    pass
+    a = np.ones(4096)
+    b = a.copy()
+    b[np.random.randint(0, 4095, 1000)] = 2
+    
