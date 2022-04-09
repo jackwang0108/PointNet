@@ -19,7 +19,7 @@ from colorama import Fore, Style, init
 # my library
 from dataset import S3DISDataset
 from network1D import PointNetSegmentation1D
-from helper import load_hdf5, visualize_xyz_label, visualize_xyz_rgb, num2label, convert_leagal_path, PathConfig
+from helper import load_hdf5, visualize_xyz_label, visualize_xyz_rgb, num2label, convert_legal_path, PathConfig
 
 init(autoreset=True)
 
@@ -29,11 +29,11 @@ class NetworkTrainer(object):
 
     def __init__(self, network: nn.Module):
         super(NetworkTrainer, self).__init__()
-        self.train_ds = S3DISDataset(split="train")
-        self.val_ds = S3DISDataset(split="val")
-        self.test_ds = S3DISDataset(split="test")
+        self.train_ds = S3DISDataset(split="train", verbose=True)
+        self.val_ds = S3DISDataset(split="val", verbose=True)
+        # self.test_ds = S3DISDataset(split="test", verbose=True)
 
-        self.net = network
+        self.net = network.to(device=self.available_device)
         self.loss_func = nn.CrossEntropyLoss()
         self.optim = optim.Adam(self.net.parameters(), lr=1e-4)
 
@@ -41,18 +41,27 @@ class NetworkTrainer(object):
 
         # saving paths
         name = self.net.__class__.__name__
-        start_time = convert_leagal_path(str(datetime.datetime.now()))
+        start_time = convert_legal_path(str(datetime.datetime.now()))
         writer_path = PathConfig.runs / f"{name}" / f"{start_time}"
-        checkpoint_path = PathConfig.checkpoints / f"{name}" / f"{start_time}-best.pt"
+        self.checkpoint_path = PathConfig.checkpoints / f"{name}" / f"{start_time}-best.pt"
+
+        self.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # summary writer
         self.writer = SummaryWriter(log_dir=writer_path)
     
     def __del__(self):
         self.writer.close()
 
     def train(self,n_epoch: int = 1000, early_stop: int = 200):
-        train_loader = data.DataLoader(self.train_ds, batch_size=64, shuffle=True, num_workers=2)
-        val_loader = data.DataLoader(self.val_ds, batch_size=64, shuffle=False, num_workers=2)
+        # other setting
+        digits = len(str(n_epoch))
 
+        # training setting
+        train_loader = data.DataLoader(self.train_ds, batch_size=8, shuffle=True, num_workers=2)
+        val_loader = data.DataLoader(self.val_ds, batch_size=8, shuffle=False, num_workers=2)
+
+        max_perpoint_acc = 0
         early_stop_cnt: int = 0
         for epoch in (tt := tqdm.trange(n_epoch)):
             x: torch.Tensor
@@ -60,30 +69,59 @@ class NetworkTrainer(object):
             y_pred: torch.Tensor
             loss: torch.Tensor
 
+
             # set information
-            tt.set_description(desc=f"Epoch [{Fore.GREEN}{epoch}{Fore.RESET}/{n_epoch}]")
+            tt.set_description(desc=f"Epoch [{Fore.GREEN}{epoch:>{digits}d}{Fore.RESET}/{n_epoch:>{digits}d}]")
+
+            all_num = 0
+            correct_num = 0
             # train
             self.net.train()
-            for step, (x, y) in train_loader:
+            for step, (x, y) in enumerate(train_loader):
                 self.net.zero_grad()
-                x, y = x.to(dtype=self.dtype, device=self.available_device), y.to(dtype=np.double,
+                x, y = x.to(dtype=self.dtype, device=self.available_device), y.to(dtype=torch.long,
                                                                                   device=self.available_device)
                 y_pred = self.net(x)
                 loss = self.loss_func(y_pred, y)
                 loss.backward()
                 self.optim.step()
-                self.writer.add_scalar(tag="/loss/training", scalar_value=loss.item(), global_step=step + epoch * len(train_loader))
+
+                all_num += y.shape[0] * y.shape[1]
+                correct_num += (y_pred.argmax(dim=1) == y).sum()
+                self.writer.add_scalar(tag="/loss/train", scalar_value=loss.item(), global_step=step + epoch * len(train_loader))
+
+            # add to tensorboard
+            self.writer.add_scalar(tag="/Per Point Accuracy/train", scalar_value= (correct_num / all_num).item(), global_step=epoch)
+
 
             # val
+            all_num = 0
+            correct_num = 0
             self.net.eval()
             with torch.no_grad():
-                for step, (x, y) in val_loader:
+                for step, (x, y) in enumerate(val_loader):
                     self.net.zero_grad()
-                    x, y = x.to(dtype=self.dtype, device=self.available_device), y.to(dtype=np.double,
+                    x, y = x.to(dtype=self.dtype, device=self.available_device), y.to(dtype=torch.long,
                                                                                       device=self.available_device)
                     y_pred = self.net(x)
                     loss = self.loss_func(y_pred, y)
-                    self.writer.add_scalar(tag="loss/train", scalar_value=loss.item(), global_step=step + epoch * len(val_loader))
+
+                    all_num += y.shape[0] * y.shape[1]
+                    correct_num += (y_pred.argmax(dim=1) == y).sum()
+                    self.writer.add_scalar(tag="/loss/validation", scalar_value=loss.item(), global_step=step + epoch * len(val_loader))
+
+                # add to tensorboard
+                self.writer.add_scalar(tag="/Per Point Accuracy/validation", scalar_value= (acc:=(correct_num / all_num).item()), global_step=epoch)
+
+            if acc > max_perpoint_acc:
+                max_perpoint_acc = acc
+                early_stop_cnt = 0
+                torch.save(self.net.state_dict(), self.checkpoint_path)
+            else:
+                early_stop_cnt += 1
+            
+            if early_stop_cnt >= early_stop:
+                break
 
     @torch.no_grad()
     def test(self):
@@ -97,9 +135,8 @@ class NetworkTrainer(object):
 
 if __name__ == "__main__":
     # todo: 写完训练代码, 包括: early stop, summary writer, save checkpoints
-    # todo: helper中写一个PathConfig, 规划项目的路径, 具体包括: runs, checkpoints, base
     # todo: helper中需要评价性能指标, 语义分割的性能指标, 包括: mIOU, IOU, AP, mAP, Dice coefficient
     # todo: 训练代码中规范化输出格式
     # todo: 有时间的话改改preprocess, 修改的内容就是z不限制, x, y限制, 最后得到一样的数据, 还有降采样问题
     # todo: 写完 network2d
-    trainer = NetworkTrainer(PointNetSegmentation1D(in_features=3, predicted_cls=14))
+    trainer = NetworkTrainer(PointNetSegmentation1D(in_features=6, predicted_cls=14)).train()
