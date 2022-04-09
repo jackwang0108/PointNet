@@ -9,7 +9,7 @@ class SharedMLP1D(nn.Module):
             /,
             activation_fn: nn.Module = nn.ReLU,
     ) -> None:
-        super().__init__()
+        super(SharedMLP1D, self).__init__()
         # save arguments
         self.in_features = in_features
         self.out_features = out_features
@@ -39,7 +39,7 @@ class PointNetClassification1D(nn.Module):
             self, in_features: int, predicted_cls: int,
             with_feature_transform: bool = False
     ) -> None:
-        super().__init__()
+        super(PointNetClassification1D, self).__init__()
         raise NotImplementedError
         if not with_feature_transform:
             raise NotImplemented
@@ -54,7 +54,7 @@ class PointNetSegmentation1D(nn.Module):
             self, in_features: int, predicted_cls: int,
             with_feature_transform: bool = False
     ):
-        super().__init__()
+        super(PointNetSegmentation1D, self).__init__()
         if with_feature_transform:
             raise NotImplementedError
 
@@ -64,6 +64,7 @@ class PointNetSegmentation1D(nn.Module):
         self.shared_mlp2 = SharedMLP1D(64, 128)
         self.shared_mlp3 = SharedMLP1D(128, 1024)
 
+        # Decoder
         self.shared_mlp4 = SharedMLP1D(1088, 512)
         self.shared_mlp5 = SharedMLP1D(512, 256)
         self.shared_mlp6 = SharedMLP1D(256, 128)
@@ -102,7 +103,3 @@ if __name__ == "__main__":
     points = torch.randn(128, 3, 1024)
     result = pn(points)
     print(result.shape)
-
-
-
-

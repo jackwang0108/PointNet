@@ -44,7 +44,7 @@ def preprocess_s3dis():
                 # load data
                 data = load_txt(room_data["data"])
 
-                # split for fuether process
+                # split for further process
                 xyz, rgb, label = np.hsplit(data, indices_or_sections=[3, 6])
                 rgb /= 255
                 # voxelization

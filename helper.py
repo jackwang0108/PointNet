@@ -6,8 +6,11 @@ from numbers import Number
 
 # Third Party Library
 import h5py
+import torch
 import numpy as np
 import open3d as o3d
+from colorama import Fore, Style, init
+from terminaltables import AsciiTable
 
 labels = ["ceiling", "floor", "wall", "beam", "column", "window", "door", "table", "chair", "sofa", "bookcase", "board",
           "clutter", "stairs"]
@@ -22,6 +25,8 @@ _colors = np.array([
 ]) / 255
 num2color: Dict[int, np.ndarray] = dict(zip(range(_colors.shape[0]), _colors))
 
+init(autoreset=True)
+np.seterr(divide="ignore", invalid="ignore")
 
 class DatasetPaths(object):
     """
@@ -76,7 +81,7 @@ class DatasetPaths(object):
 
             # s3dis_original_xyzrgb_data["Area_1"]["office_1"]["data"]
             s3dis_original_xyzrgb_data: Dict[str, Dict[str,
-                                                    Dict[str, Union[Path, List[Path]]]]] = {}
+                                                       Dict[str, Union[Path, List[Path]]]]] = {}
             for _area_name, _area_path in _s3dis_original_areas.items():
                 _room_data = {}
                 for _room_path in _area_path.iterdir():
@@ -88,7 +93,6 @@ class DatasetPaths(object):
                     except StopIteration:
                         pass
                 s3dis_original_xyzrgb_data[_area_name] = _room_data
-
 
 
 class PathConfig:
@@ -105,23 +109,74 @@ class PathConfig:
 
 
 class Evaluator:
+    def __init__(self, labels: List[str] = labels) -> None:
+        self.classes = labels
+        self._num_classes: int = len(labels)
+        self._confusion_matrix = np.zeros(shape=(self._num_classes, self._num_classes), dtype=np.int64)
+
+    def reset(self):
+        self._confusion_matrix = np.zeros(shape=(self._num_classes, self._num_classes), dtype=np.int64)
+
+    def add_batch(self, pred: torch.Tensor, label: torch.Tensor) -> None:
+        bcm = self.batch_confusion_matrix(pred, label, self._num_classes)
+        self._confusion_matrix += bcm.sum(axis=0)
+
+    def Piont_Accuracy(self) -> float:
+        acc = self._confusion_matrix.diagonal().sum() / self._confusion_matrix.sum()
+        return acc
+
+    def Point_Accuracy_Class(self, epoch: int) -> Tuple[List[float], AsciiTable]:
+        acc = (self._confusion_matrix.diagonal() / self._confusion_matrix.sum(axis=0)).tolist()
+        m_acc = np.nanmean(acc)
+        acc.append(m_acc)
+        acc = [round(i, ndigits=4) for i in acc]
+
+        table = [self.classes.copy(), acc]
+        table[0].append("mAcc")
+        table = AsciiTable(table)
+        table.title = f"Epoch[{Fore.GREEN}{Style.BRIGHT}{epoch}{Style.RESET_ALL}] Validation Acc"
+
+        return acc, table
+
+    def IOU(self, epcoh: int) -> Tuple[List[float], AsciiTable]:
+        p_and_g = self._confusion_matrix.diagonal()
+        p_or_g = self._confusion_matrix.sum(axis=0) + self._confusion_matrix.sum(axis=1) - p_and_g
+        iou = (p_and_g / p_or_g).tolist()
+        m_iou = np.nanmean(iou)
+        iou.append(m_iou)
+        iou = [round(i, ndigits=4) for i in iou]
+
+        table = [self.classes.copy(), iou]
+        table[0].append('mIOU')
+        table = AsciiTable(table)
+        table.title = f"Epoch[{Fore.GREEN}{Style.BRIGHT}{epcoh}{Style.RESET_ALL}] Validation IOU"
+
+        return iou, table
+
     @staticmethod
-    def fast_hist(preds, labels, num_classes):
-        """Compute the confusion matrix for every batch.
-        Args:
-            preds (np.ndarray):  Prediction labels of points with shape of
-            (num_points, ).
-            labels (np.ndarray): Ground truth labels of points with shape of
-            (num_points, ).
-            num_classes (int): number of classes
-        Returns:
-            np.ndarray: Calculated confusion matrix.
+    def batch_confusion_matrix(preds: Union[np.ndarray, torch.Tensor], labels: Union[np.ndarray, torch.Tensor],
+                                num_classes: int) -> np.ndarray:
         """
+        batch_confusion_matrix is used to compute the confusion matrix of a batch
+        Args:
+            labels: Prediction labels of points with shape of [batch, point_nums]
+            num_classes: Ground truth labels of points with shape of [batch, point_nums]
+        Returns:
+            confusion matrix, represented by a tensor of [batch, num_classes, num_classes]
+        """
+        preds = preds if isinstance(preds, np.ndarray) else preds.to(device="cpu").numpy()
+        labels = labels if isinstance(labels, np.ndarray) else labels.to(device="cpu").numpy()
         k = (labels >= 0) & (labels < num_classes)
-        bin_count = np.bincount(
-            num_classes * labels[k].astype(int) + preds[k].astype(int),
-            minlength=num_classes**2)
-        return bin_count[:num_classes**2].reshape(num_classes, num_classes)
+        confusion_matrix = []
+        for k_i, labels_i, preds_i in zip(k, labels, preds):
+            cm = np.bincount(
+                num_classes * labels_i[k_i].astype(int) + preds_i[k_i].astype(int),
+                minlength=num_classes ** 2
+            ).reshape(num_classes, num_classes)
+            cm = np.expand_dims(cm, axis=0)
+            confusion_matrix.append(cm)
+        # int64 for overflow
+        return np.concatenate(confusion_matrix, axis=0, dtype=np.int64)
 
 
 def voxelize(xyz: np.ndarray, voxel_grid_size: Number = 0.2) -> np.ndarray:
@@ -178,8 +233,8 @@ def load_txt(point_path: Path, with_label: bool = True) -> np.ndarray:
         label name to label number is show in helper.label2num
     """
     assert not time.localtime((DatasetPaths.S3DIS.s3dis_original_xyzrgb_data["Area_5"]["hallway_6"][
-        "data"].parent / "Annotations/ceiling_1.txt").
-        stat().st_mtime).tm_year == 2016, \
+                                   "data"].parent / "Annotations/ceiling_1.txt").
+                              stat().st_mtime).tm_year == 2016, \
         f"Area_3/hallway_2/hallway_2.txt, row 5303 has a control symbol which cannot be convert to float, " \
         f"please modify it first using vim and other editors."
     #
@@ -366,12 +421,19 @@ if __name__ == "__main__":
 
     # with load_hdf5(DatasetPaths.S3DIS.s3dis_processed_npy_data["Area_1_all"].parent.joinpath("Area_3.hdf5")) as f:
     #     print("Done")
-    a = np.random.randint(0, 14, 4096)
+    a = np.random.randint(0, 14, (64, 4096))
     b = a.copy()
-    idx = np.arange(len(b))
+    idx = np.arange(len(b))[np.newaxis, :]
     np.random.shuffle(idx)
-    b[idx[:2048]] = 0
-    
-    h = Evaluator.fast_hist(preds=b ,labels=a, num_classes=14)
-    print(h)
-    print("Done")
+    idx = idx.repeat(64, 1)
+    b[idx[:, :2048]] = 0
+
+    e = Evaluator()
+    e.add_batch(b, a)
+    iou = e.IOU(epcoh=1)
+    print(iou[0])
+    print(iou[1].table)
+
+    acc = e.Point_Accuracy_Class(epoch=1)
+    print(acc[0])
+    print(acc[1].table)
