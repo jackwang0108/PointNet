@@ -14,12 +14,14 @@ from pathlib import Path
 import tqdm
 import h5py
 import numpy as np
-from colorama import Fore, Style
+from colorama import Fore, Style, init
 
 # my library
 from dataset import S3DISDataset
 from network1D import PointNetSegmentation1D
 from helper import load_hdf5, visualize_xyz_label, visualize_xyz_rgb, num2label, convert_leagal_path, PathConfig
+
+init(autoreset=True)
 
 
 class NetworkTrainer(object):
@@ -27,9 +29,9 @@ class NetworkTrainer(object):
 
     def __init__(self, network: nn.Module):
         super(NetworkTrainer, self).__init__()
-        # self.train_ds = S3DISDataset(split="train")
-        # self.val_ds = S3DISDataset(split="val")
-        # self.test_ds = S3DISDataset(split="test")
+        self.train_ds = S3DISDataset(split="train")
+        self.val_ds = S3DISDataset(split="val")
+        self.test_ds = S3DISDataset(split="test")
 
         self.net = network
         self.loss_func = nn.CrossEntropyLoss()
@@ -37,18 +39,29 @@ class NetworkTrainer(object):
 
         self.dtype = self.net.dtype
 
-        self.start_time = convert_leagal_path(str(datetime.datetime.now()))
-        # self.writer = SummaryWriter()
+        # saving paths
+        name = self.net.__class__.__name__
+        start_time = convert_leagal_path(str(datetime.datetime.now()))
+        writer_path = PathConfig.runs / f"{name}" / f"{start_time}"
+        checkpoint_path = PathConfig.checkpoints / f"{name}" / f"{start_time}-best.pt"
+        self.writer = SummaryWriter(log_dir=writer_path)
+    
+    def __del__(self):
+        self.writer.close()
 
     def train(self,n_epoch: int = 1000, early_stop: int = 200):
         train_loader = data.DataLoader(self.train_ds, batch_size=64, shuffle=True, num_workers=2)
         val_loader = data.DataLoader(self.val_ds, batch_size=64, shuffle=False, num_workers=2)
 
+        early_stop_cnt: int = 0
         for epoch in (tt := tqdm.trange(n_epoch)):
             x: torch.Tensor
             y: torch.Tensor
             y_pred: torch.Tensor
             loss: torch.Tensor
+
+            # set information
+            tt.set_description(desc=f"Epoch [{Fore.GREEN}{epoch}{Fore.RESET}/{n_epoch}]")
             # train
             self.net.train()
             for step, (x, y) in train_loader:
@@ -59,6 +72,7 @@ class NetworkTrainer(object):
                 loss = self.loss_func(y_pred, y)
                 loss.backward()
                 self.optim.step()
+                self.writer.add_scalar(tag="/loss/training", scalar_value=loss.item(), global_step=step + epoch * len(train_loader))
 
             # val
             self.net.eval()
@@ -69,6 +83,7 @@ class NetworkTrainer(object):
                                                                                       device=self.available_device)
                     y_pred = self.net(x)
                     loss = self.loss_func(y_pred, y)
+                    self.writer.add_scalar(tag="loss/train", scalar_value=loss.item(), global_step=step + epoch * len(val_loader))
 
     @torch.no_grad()
     def test(self):

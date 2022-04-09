@@ -1,4 +1,4 @@
-# Standary Library
+# Standard Library
 import time
 from typing import *
 from pathlib import Path
@@ -7,15 +7,17 @@ from numbers import Number
 # Third Party Library
 import h5py
 import numpy as np
-import open3d as o3d
+# import open3d as o3d
 
 labels = ["ceiling", "floor", "wall", "beam", "column", "window", "door", "table", "chair", "sofa", "bookcase", "board",
           "clutter", "stairs"]
 num2label: Dict[int, str] = dict(enumerate(labels))
 label2num: Dict[str, int] = {name: i for i, name in enumerate(labels)}
 _colors = np.array([
-    [192, 57, 43], [155, 89, 182], [41, 128, 185], [133, 193, 233], [118, 215, 196], [14, 102, 85],
-    [244, 208, 63], [235, 152, 78], [93, 109, 126], [233, 30, 99], [52, 73, 94], [109, 76, 65], [218, 247, 166],
+    [192, 57, 43], [155, 89, 182], [41, 128, 185], [
+        133, 193, 233], [118, 215, 196], [14, 102, 85],
+    [244, 208, 63], [235, 152, 78], [93, 109, 126], [
+        233, 30, 99], [52, 73, 94], [109, 76, 65], [218, 247, 166],
     [110, 44, 0]
 ]) / 255
 num2color: Dict[int, np.ndarray] = dict(zip(range(_colors.shape[0]), _colors))
@@ -49,7 +51,8 @@ class DatasetPaths(object):
         s3dis_base: Path = _base.joinpath("s3dis")
 
         # s3dis my processed path
-        _s3dis_my_processed: Path = s3dis_base.joinpath("my_processed").resolve()
+        _s3dis_my_processed: Path = s3dis_base.joinpath(
+            "my_processed").resolve()
         # s3dis_my_processed_h5_data: {file_name: Path}
         s3dis_my_processed_h5_data: Dict[str, Path] = {
             _p.stem: _p for _p in _s3dis_my_processed.glob("*.hdf5")
@@ -69,7 +72,8 @@ class DatasetPaths(object):
         }
 
         # s3dis_original_xyzrgb_data["Area_1"]["office_1"]["data"]
-        s3dis_original_xyzrgb_data: Dict[str, Dict[str, Dict[str, Union[Path, List[Path]]]]] = {}
+        s3dis_original_xyzrgb_data: Dict[str, Dict[str,
+                                                   Dict[str, Union[Path, List[Path]]]]] = {}
         for _area_name, _area_path in _s3dis_original_areas.items():
             _room_data = {}
             for _room_path in _area_path.iterdir():
@@ -82,12 +86,17 @@ class DatasetPaths(object):
                     pass
             s3dis_original_xyzrgb_data[_area_name] = _room_data
 
+
 class PathConfig:
     base: Path = Path(__file__).resolve().parent
     log: Path = base / "log"
     runs: Path = base / "runs"
     dataset: Path = base / "datastes"
     checkpoints: Path = base / "checkpoints"
+
+
+class Evaluator:
+    pass
 
 
 def voxelize(xyz: np.ndarray, voxel_grid_size: Number = 0.2) -> np.ndarray:
@@ -145,8 +154,8 @@ def load_txt(point_path: Path, with_label: bool = True) -> np.ndarray:
     """
     import time
     assert not time.localtime((DatasetPaths.S3DIS.s3dis_original_xyzrgb_data["Area_5"]["hallway_6"][
-                                   "data"].parent / "Annotations/ceiling_1.txt").\
-                              stat().st_mtime).tm_year == 2016, \
+        "data"].parent / "Annotations/ceiling_1.txt").
+        stat().st_mtime).tm_year == 2016, \
         f"Area_3/hallway_2/hallway_2.txt, row 5303 has a control symbol which cannot be convert to float, " \
         f"please modify it first using vim and other editors."
     #
@@ -183,7 +192,8 @@ def load_txt(point_path: Path, with_label: bool = True) -> np.ndarray:
     # concate each instance
     for name, instances in per_object_instance.items():
         points = np.vstack(instances)
-        instance_idx = np.full(shape=(len(points), 1), fill_value=label2num[name])
+        instance_idx = np.full(shape=(len(points), 1),
+                               fill_value=label2num[name])
         if with_label:
             points = np.hstack((points, instance_idx))
         per_object_instance[name] = points
@@ -195,11 +205,32 @@ def load_txt(point_path: Path, with_label: bool = True) -> np.ndarray:
 
 
 def load_hdf5(hdf5_path: Path):
+    """
+    load_hdf5 is used to load training data
+    Args:
+        hdf5_path: Path, path points to .h5 or .hdf5 file
+    Returns:
+        f: h5py.File, f.keys() are ["data", "label"]. f["data"] is [1000, 4096, 9] array
+    """
     assert hdf5_path.exists() and hdf5_path.suffix in [".hdf5", ".h5"]
     return h5py.File(hdf5_path, mode="r")
 
 
 def convert_leagal_path(p: str) -> str:
+    """
+    convert_leagal_path is used to generate leagal path in different os
+    Args:
+        p: str, path to conver
+    Returns:
+        leagal_path: str, leagal path
+    Examples:
+        >>> import datetime
+        >>> current_time = str(datetime.datetime.now())
+        >>> print(current_time)
+        2022-04-09 04:55:32.297116
+        >>> print(convert_leagal_path(current_time))
+        2022-04-09 04_55_32.297116
+    """
     import platform
     if platform.uname().system == "Linux":
         return p
@@ -257,7 +288,8 @@ def visualize_xyz_label(xyz: np.ndarray, label: np.ndarray = None, lookup_table:
     pointcloud.points = o3d.utility.Vector3dVector(xyz.astype(np.float64))
     if label is not None:
         colors = np.vstack([num2color[i] for i in label[:, 0]])
-        pointcloud.colors = o3d.utility.Vector3dVector(colors.astype(np.float64))
+        pointcloud.colors = o3d.utility.Vector3dVector(
+            colors.astype(np.float64))
     o3d.visualization.draw_geometries([pointcloud], width=800, height=600)
 
 
