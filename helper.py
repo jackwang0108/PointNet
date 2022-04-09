@@ -95,8 +95,13 @@ class PathConfig:
     base: Path = Path(__file__).resolve().parent
     log: Path = base / "log"
     runs: Path = base / "runs"
-    dataset: Path = base / "datastes"
+    dataset: Path = base / "datasets"
     checkpoints: Path = base / "checkpoints"
+
+    log.mkdir(parents=True, exist_ok=True)
+    runs.mkdir(parents=True, exist_ok=True)
+    checkpoints.mkdir(parents=True, exist_ok=True)
+    dataset.mkdir(parents=True, exist_ok=True)
 
 
 class Evaluator:
@@ -114,7 +119,7 @@ class Evaluator:
         """
         k = (labels >= 0) & (labels < num_classes)
         bin_count = np.bincount(
-            num_classes * labels[k].astype(int) + preds[k],
+            num_classes * labels[k].astype(int) + preds[k].astype(int),
             minlength=num_classes**2)
         return bin_count[:num_classes**2].reshape(num_classes, num_classes)
 
@@ -361,7 +366,12 @@ if __name__ == "__main__":
 
     # with load_hdf5(DatasetPaths.S3DIS.s3dis_processed_npy_data["Area_1_all"].parent.joinpath("Area_3.hdf5")) as f:
     #     print("Done")
-    a = np.ones(4096)
+    a = np.random.randint(0, 14, 4096)
     b = a.copy()
-    b[np.random.randint(0, 4095, 1000)] = 2
+    idx = np.arange(len(b))
+    np.random.shuffle(idx)
+    b[idx[:2048]] = 0
     
+    h = Evaluator.fast_hist(preds=b ,labels=a, num_classes=14)
+    print(h)
+    print("Done")
