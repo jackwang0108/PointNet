@@ -17,7 +17,7 @@ from helper import DatasetPaths, visualize_xyz_rgb, visualize_xyz_label, load_hd
 class S3DISDataset(data.Dataset):
     def __init__(self, split: str, verbose: bool = False):
         super(S3DISDataset, self).__init__()
-        assert split in ["train", "test", "validation"]
+        assert split in ["train", "test", "validation", "val"]
         self.split = split
         self.all_data = []
         self.all_label = []
