@@ -362,7 +362,8 @@ def visualize_xyz_label(xyz: np.ndarray, label: np.ndarray = None, lookup_table:
         >>> visualize_xyz_label(xyz, label) # visualize point cloud with given label color.
     """
     label = label[:, np.newaxis] if label.ndim == 1 else label
-    assert xyz.shape[-1] == 3 and xyz.shape[0] == label.shape[0]
+    assert xyz.shape[-1] == 3, f"Expected points to have 3 corrdinates: [x, y, z], but {xyz.shape[-1]} were given"
+    assert xyz.shape[0] == label.shape[0], f"Expected all point have corresponding label, but given {xyz.shape[0]} with {label.shape[0]} labels"
     pointcloud = o3d.geometry.PointCloud()
     pointcloud.points = o3d.utility.Vector3dVector(xyz.astype(np.float64))
     if label is not None:

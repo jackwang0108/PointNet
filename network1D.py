@@ -77,7 +77,8 @@ class PointNetSegmentation1D(nn.Module):
                 break
 
     def forward(self, x:torch.Tensor) -> torch.Tensor:
-        # x: [batch, feature_num, point_num)
+        # x: [batch, feature_num, point_num]
+        # y: [batch, class_num, point_num]
         point_num = x.size(2)
         x = self.shared_mlp1(x)
         pointwise_feature = self.shared_mlp11(x)
@@ -93,6 +94,15 @@ class PointNetSegmentation1D(nn.Module):
 
         y_predicted = self.shared_mlp_prediction(x)
         return y_predicted
+    
+    # @torch.no_grad()
+    # def inference(self, x:torch.Tensor) -> torch.Tensor:
+    #     # x: [batch, feature_num, point_num]
+    #     # y: [batch, point_num]
+    #     y_predicted = self.forward(x)
+    #     predicted_cls = y_predicted.argmax(dim=1)
+    #     return predicted_cls
+
 
 
 if __name__ == "__main__":
